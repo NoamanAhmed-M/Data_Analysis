@@ -21,7 +21,7 @@ class DateRangeApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Date Range Selector")
-        self.root.geometry("900x900")
+        self.root.geometry("1000x700")
 
         # --- Create Canvas with Scrollbar ---
         outer_frame = ttk.Frame(root)
@@ -78,23 +78,33 @@ class DateRangeApp:
         ttk.Label(main_frame, text="Target URL (after login):").grid(row=3, column=0, sticky="w", pady=5)
         self.url_entry = ttk.Entry(main_frame, width=50)
         self.url_entry.grid(row=3, column=1, padx=2, pady=2, sticky="ew")
-        self.url_entry.insert(0, "link")
+        self.url_entry.insert(0, "")
+        # Date Range Selection Dropdown
+        ttk.Label(main_frame, text="Select Date Range:").grid(row=4, column=0, sticky="w", pady=5)
 
-        # Start Date
-        ttk.Label(main_frame, text="Start Date:").grid(row=4, column=0, sticky="w", pady=5)
-        start_date_default = datetime.now() - timedelta(days=7)
-        self.start_cal = Calendar(main_frame, selectmode='day', date_pattern='dd/mm/yyyy',
-                                  year=start_date_default.year, month=start_date_default.month,
-                                  day=start_date_default.day)
-        self.start_cal.grid(row=5, column=0, columnspan=2, padx=3, pady=3, sticky="ew")
+        date_range_options = [
+            "Today",           # 1
+            "Yesterday",       # 2
+            "Current Week",    # 3
+            "Previous Week",   # 4
+            "Current Month",   # 5
+            "Previous Month",  # 6
+            "Current Year",    # 7
+            "Previous Year"    # 8
+        ]
 
-        # End Date
-        ttk.Label(main_frame, text="End Date:").grid(row=6, column=0, sticky="w", pady=5)
-        end_date_default = datetime.now()
-        self.end_cal = Calendar(main_frame, selectmode='day', date_pattern='dd/mm/yyyy',
-                                year=end_date_default.year, month=end_date_default.month,
-                                day=end_date_default.day)
-        self.end_cal.grid(row=7, column=0, columnspan=2, padx=3, pady=3, sticky="ew")
+        self.date_range_var = tk.StringVar()
+        self.date_range_var.set(date_range_options[0])  # Default: Today
+
+        self.date_range_dropdown = ttk.Combobox(main_frame, textvariable=self.date_range_var,
+                                                values=date_range_options, state="readonly")
+        self.date_range_dropdown.grid(row=5, column=0, columnspan=2, padx=3, pady=3, sticky="ew")
+
+        self.date_range_index = 1  # Default index
+
+        self.date_range_dropdown.bind("<<ComboboxSelected>>", lambda e: setattr(
+            self, "date_range_index", date_range_options.index(self.date_range_var.get()) + 1))
+
 
         # Save Path
         ttk.Label(main_frame, text="Save Excel File As:").grid(row=8, column=0, sticky="w", pady=5)
@@ -153,24 +163,12 @@ class DateRangeApp:
             messagebox.showerror("Error", "Please select the Excel file save path before starting.")
             return
         
-        start_date = self.start_cal.get_date()
-        end_date = self.end_cal.get_date()
+        # Get selected date range option
+        date_range_option = self.date_range_var.get()
+        self.log_message(f"Starting automation for date range: {date_range_option}")
         
-        try:
-            start_dt = datetime.strptime(start_date, "%d/%m/%Y")
-            end_dt = datetime.strptime(end_date, "%d/%m/%Y")
-            
-            if start_dt > end_dt:
-                self.log_message("Error: Start date must be before or equal to end date")
-                messagebox.showerror("Error", "Start date must be before or equal to end date")
-                return
-                
-            self.log_message(f"Processing from {start_date} to {end_date}")
-            self.root.after(100, lambda: self.run_automation(start_dt, end_dt, email, password, target_url, save_path))
-            
-        except ValueError as e:
-            self.log_message(f"Error: {str(e)}")
-            messagebox.showerror("Error", f"Invalid date format: {str(e)}")
+        # Run the automation
+        self.run_automation(email, password, target_url, save_path)
     
     def navigate_to_target(self, driver, target_url):
         """Robust navigation method with multiple fallbacks"""
@@ -212,8 +210,9 @@ class DateRangeApp:
                 continue
         return False
 
-    def run_automation(self, start_date, end_date, email, password, target_url, save_path):
-        current_date = start_date
+    def run_automation(self, email, password, target_url, save_path):
+        date_range_index = self.date_range_index
+        self.log_message(f"Using date range option #{date_range_index}")
 
         chrome_options = webdriver.ChromeOptions()
         chrome_options.add_argument("--disable-blink-features=AutomationControlled")
@@ -244,7 +243,7 @@ class DateRangeApp:
 
         try:
             self.log_message("Navigating to login page...")
-            login_url = "link"
+            login_url = ""
             self.driver.get(login_url)
 
             try:
@@ -296,6 +295,70 @@ class DateRangeApp:
                 time.sleep(1)
             except TimeoutException:
                 self.log_message("No Activity button found - proceeding directly")
+            try:
+                time.sleep(1)
+                # Click type button
+                type_button = WebDriverWait(self.driver, 5).until(
+                    EC.element_to_be_clickable((By.XPATH, "/html/body/div[10]/div[4]/section/div[1]/div/div[3]/div[1]/div/div[2]/div/div[2]/div[1]/span"))
+                )
+                type_button.click()
+                time.sleep(1)
+
+                # Click deselct option using JS
+                self.driver.execute_script("""
+                    const el = document.querySelector("#app > div:nth-child(3) > div.by-scroll-container > div > div:nth-child(2) > div > div:nth-child(2) > div.dr-dropdown-panel > div:nth-child(2) > div:nth-child(2)");
+                    el?.click();
+                """)
+
+                # Select type settings
+                for i, xpath in enumerate([
+                    "/html/body/div[10]/div[4]/section/div[1]/div/div[3]/div[1]/div/div[2]/div/div[2]/div[2]/div[3]/div[1]/div/span[1]",
+                    "/html/body/div[10]/div[4]/section/div[1]/div/div[3]/div[1]/div/div[2]/div/div[2]/div[2]/div[3]/div[2]/div/span[2]",
+                    "/html/body/div[10]/div[4]/section/div[1]/div/div[3]/div[1]/div/div[2]/div/div[2]/div[2]/div[3]/div[3]/div/span[1]",
+                    "/html/body/div[10]/div[4]/section/div[1]/div/div[3]/div[1]/div/div[2]/div/div[2]/div[2]/div[3]/div[4]/div/span[1]",
+                    "/html/body/div[10]/div[4]/section/div[1]/div/div[3]/div[1]/div/div[2]/div/div[2]/div[2]/div[3]/div[5]/div/span[1]"
+                ], start=1):
+                    setting = WebDriverWait(self.driver, 5).until(EC.element_to_be_clickable((By.XPATH, xpath)))
+                    setting.click()
+                try:
+                    
+                    # Open date picker
+                    try:
+                        date_field_button = WebDriverWait(self.driver, 10).until(
+                            EC.element_to_be_clickable((By.XPATH, 
+                                "/html/body/div[10]/div[4]/section/div[1]/div/div[3]/div[1]/div/div[4]/div/div/div/div[2]/span"))
+                        )
+                        date_field_button.click()
+                        time.sleep(1)  # Small delay for calendar to open
+                        select_date_option = WebDriverWait(self.driver, 10).until(
+                            EC.element_to_be_clickable((By.XPATH, 
+                                f"/html/body/div[10]/div[4]/section/div[1]/div/div[3]/div[1]/div/div[4]/div/div/div/div[3]/div[1]/span[{date_range_index}]"))
+                        )
+                        select_date_option.click()
+                        time.sleep(1)  # Small delay for calendar to open
+                        act_button = WebDriverWait(self.driver, 5).until(
+                            EC.element_to_be_clickable((By.XPATH, "/html/body/div[10]/div[4]/section/div[1]/div/div[3]/div[1]/div/div[3]/div/div[2]/div[1]/span"))
+                        )
+                        act_button.click()
+                        time.sleep(1)
+
+                        # Click deselct option using JS
+                        self.driver.execute_script("""
+                            const el = document.querySelector("#app > div:nth-child(3) > div.by-scroll-container > div > div:nth-child(3) > div > div:nth-child(2) > div.dr-dropdown-panel > div:nth-child(2) > div:nth-child(2)");
+                            el?.click();
+                        """)
+                    except Exception as e:
+                        print(f"Failed to open date picker: {str(e)}")
+                        raise
+                    
+                    time.sleep(2)  # Wait for selection to complete
+
+                except Exception as e:
+                    print(f"Date selection failed: {str(e)}")
+                    raise
+                time.sleep(10)
+            except TimeoutException:
+                self.log_message(" Timeout: could not reset the settings - proceeding directly")
             all_dfs = []
 
             try:
@@ -350,7 +413,6 @@ class DateRangeApp:
 
                                 # Create DataFrame
                                 df = pd.DataFrame(table_data, columns=manual_header)
-                                df.insert(0, "ExtractedDate", current_date.strftime('%Y-%m-%d'))
                                 df["incarico_extracted"] = None
 
                                 if "incarico" in df.columns:
@@ -373,7 +435,7 @@ class DateRangeApp:
                                                     }}
                                                 '''
                                                 self.driver.execute_script(js_click)
-                                                time.sleep(3)  # Wait for modal to fully appear
+                                                time.sleep(1)  # Wait for modal to fully appear
 
                                                 js_extract = '''
                                                     function getTextByXPath(xpath) {
@@ -384,7 +446,7 @@ class DateRangeApp:
                                                 '''
                                                 extracted_value = self.driver.execute_script(js_extract)
                                                 df.at[local_index_on_page, "incarico_extracted"] = extracted_value
-                                                time.sleep(2)
+                                                time.sleep(1)
                                                 self.log_message(f"✓ Extracted incarico: {extracted_value}")
                                                 js_close = '''
                                                     const buttonSpan = document.querySelector(
@@ -405,7 +467,7 @@ class DateRangeApp:
                                 else:
                                     self.log_message("⚠ 'incarico' column not found in DataFrame")
                                 all_dfs.append(df)
-                                self.log_message(f" Table #{idx} extracted with {len(df)} rows")
+                                self.log_message(f"Table #{idx} extracted with {len(df)} rows")
 
                             except Exception as ex_table:
                                 self.log_message(f" Error extracting Table #{idx}: {ex_table}")
@@ -430,7 +492,7 @@ class DateRangeApp:
                             }
                         '''
                         self.driver.execute_script(js_click_arrow)
-                        time.sleep(3)
+                        time.sleep(2)
                     except Exception as e:
                         self.log_message(f" Failed to click next arrow: {e}")
                         break
@@ -443,6 +505,15 @@ class DateRangeApp:
                 try:
                     full_df = pd.concat(all_dfs, ignore_index=True)
                     manipulated_full_df = full_df.drop(["importo attivita","importo aggiuntivo","importo di viaggio","importo altri elementi","importo articoli","importo totale","indirizzo","incarico","rapportino","importo spese","telefono contatto","FAX contatto","Email referente","telefono referente","cellulare referente","fax referente","rapportino inviato il"], axis = 1)
+                    if 'completata' in manipulated_full_df.columns:
+                        manipulated_full_df['completata'] = manipulated_full_df['completata'].apply(
+                            lambda x: True if x == 'check_box' else False
+                        )
+                    if 'approvata' in manipulated_full_df.columns:
+                        manipulated_full_df['approvata'] = manipulated_full_df['approvata'].apply(
+                            lambda x: True if x == 'check_box' else False
+                        )
+                    manipulated_full_df = manipulated_full_df.drop(manipulated_full_df.tail(1).index)
                     manipulated_full_df.to_excel(save_path, index=False)
                     self.log_message(f"\n All pages exported to Excel: {save_path}")
                 except Exception as ex_save:
